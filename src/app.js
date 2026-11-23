@@ -702,7 +702,22 @@ function renderTyping () {
   const who = Object.entries(r.typing).filter(([u, t]) => t > Date.now() && !isBlocked(u)).map(([u]) => profOf(r, u).name)
   el.textContent = who.length ? who.join(', ') + (who.length > 1 ? ' are typing…' : ' is typing…') : ''
 }
-const scrollEnd = () => requestAnimationFrame(() => { const el = $('#chat'); if (el) el.scrollTop = el.scrollHeight })
+const scrollNow = () => { const el = $('#chat'); if (el) el.scrollTop = el.scrollHeight }
+const scrollEnd = () => { requestAnimationFrame(scrollNow); setTimeout(scrollNow, 120); setTimeout(scrollNow, 350) }
+// iPhone keyboard: size the app to the visible area, undo the page shift iOS applies, and keep the newest message in view
+if (window.visualViewport) {
+  let lastH = 0
+  const fit = () => {
+    const vv = window.visualViewport; document.documentElement.style.setProperty('--vvh', vv.height + 'px')
+    if (window.scrollY || vv.offsetTop) window.scrollTo(0, 0)
+    const shrank = vv.height < lastH - 80; lastH = vv.height
+    const ta = document.activeElement
+    if (shrank || (ta && ta.id === 'msg')) scrollEnd()
+  }
+  window.visualViewport.addEventListener('resize', fit); window.visualViewport.addEventListener('scroll', fit)
+  document.addEventListener('focusin', e => { if (e.target.id === 'msg') { setTimeout(fit, 80); setTimeout(fit, 350) } })
+  document.addEventListener('focusout', () => setTimeout(() => { window.scrollTo(0, 0); fit() }, 60))
+}
 
 // ===================================================================== feed
 let feedSig = ''
