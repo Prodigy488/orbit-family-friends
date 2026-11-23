@@ -8,6 +8,7 @@ import { APP_ID, kvGet, kvSet, msgsOf, msgPut, msgDel, filePut, fileGet, fileDel
 import { openStudio } from './studio.js'
 import { ic } from './icons.js'
 import { play } from './sounds.js'
+import { randId, seal, open as relayOpen, relayRegister, relayPut, relayPull } from './relay.js'
 
 const fileIcon = k => ic({ image: 'image', video: 'film', audio: 'music', text: 'file', file: 'file' }[k] || 'file', 28)
 const $ = (s, r = document) => r.querySelector(s)
@@ -19,7 +20,7 @@ const THEMES = [['midnight', 'Midnight', 'linear-gradient(135deg,#0b0d12,#5b8cff
 const BGS = [['none', 'None', ''], ['dots', 'Dots', 'radial-gradient(rgba(255,255,255,.08) 1.5px,transparent 1.5px) 0 0/22px 22px'], ['grid', 'Grid', 'linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px) 0 0/26px 26px,linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px) 0 0/26px 26px'], ['aurora', 'Aurora', 'linear-gradient(160deg,#0b3b4a,#3a1f6b 55%,#0b0d12)'], ['sunrise', 'Sunrise', 'linear-gradient(180deg,#43255c,#c44a5a 70%,#f0a45a)'], ['deep', 'Deep sea', 'linear-gradient(180deg,#04121f,#0a3a5a)'], ['moss', 'Moss', 'linear-gradient(160deg,#0f2418,#27583a)'], ['wine', 'Wine', 'linear-gradient(160deg,#2a0a1a,#6a1b3e)'], ['mesh', 'Mesh', 'radial-gradient(at 20% 20%,#5b8cff55,transparent 50%),radial-gradient(at 80% 30%,#ff3df044,transparent 50%),radial-gradient(at 50% 90%,#2de2c444,transparent 50%),#0b0d12']]
 const DEF = {
   me: null,
-  settings: { theme: 'midnight', bubble: 'round', density: 'cozy', font: 'system', glass: false, align: 'split', profanity: true, shield: 'blur', giphy: '', notif: true, sound: true, soundSet: 'msn', volume: 0.7, popups: true, receipts: true, discoverable: true, relays: '', turnUrl: '', turnUser: '', turnPass: '', webBase: '' },
+  settings: { theme: 'midnight', bubble: 'round', density: 'cozy', font: 'system', glass: false, align: 'split', profanity: true, shield: 'blur', giphy: '', notif: true, sound: true, soundSet: 'msn', volume: 0.7, popups: true, receipts: true, relay: '', discoverable: true, relays: '', turnUrl: '', turnUser: '', turnPass: '', webBase: '' },
   circles: [], blocked: {}
 }
 const S = { ...JSON.parse(JSON.stringify(DEF)), view: 'chats', invites: [], seenOn: {}, boot: Date.now(), feedFilter: 'all', feedNew: 0, feedOpen: new Set(), postDraft: { text: '', file: null, cids: null }, drafts: {}, draftCid: '', uid: '', active: null, panel: null, tab: 'members', mobileChat: false, reply: null, revealProf: new Set(), revealImg: new Set() }
@@ -27,7 +28,7 @@ const R = {}              // runtime per circle
 const blobs = {}          // fileId -> {url, type, size}
 const loading = new Set() // fileIds being read from DB
 const shield = {}         // fileId -> 'pending' | 'ok' | 'sensitive'
-window.__orbit = { S, R, shield }
+window.__orbit = { S, R, shield }; setTimeout(() => Object.assign(window.__orbit, { relayPullAll, relayInit, saveCfg }), 0)
 const prog = {}           // fileId -> 0..1 while downloading
 let callUI = null
 let myShares = {}         // cid -> {until, to:[userIds], watch, timer}
@@ -154,7 +155,7 @@ async function connect (c) {
   return r
 }
 
-const profilePayload = () => ({ name: me().name, emoji: me().emoji, color: me().color, img: me().img || '', status: me().status || '', pay: me().pay || {} })
+const profilePayload = () => ({ name: me().name, emoji: me().emoji, color: me().color, img: me().img || '', status: me().status || '', pay: me().pay || {}, ib: me().ib || '' })
 function pushProfile () { Object.values(R).forEach(r => r.profile && r.profile.set(profilePayload())) }
 
 async function createCircle (name, opts = {}) {
@@ -401,7 +402,7 @@ async function sendText (text) {
   const r = cur(); text = text.trim(); if (!r || !text) return
   const m = { id: uid(), cid: r.c.id, from: S.uid, ts: Date.now(), kind: 'text', text, fc: me().feedColor || '', reacts: {} }
   if (S.reply) { m.reply = { id: S.reply.id, from: S.reply.from, text: S.reply.kind === 'file' ? 'Attachment: ' + S.reply.file.name : S.reply.text.slice(0, 120) }; S.reply = null }
-  r.msgs.push(m); await msgPut(m); r.A.msg.send(m).catch(() => {}); render(); scrollEnd()
+  r.msgs.push(m); await msgPut(m); r.A.msg.send(m).catch(() => {}); relaySend(r, m); render(); scrollEnd()
 }
 async function sendFile (file, caption) {
   const r = cur(); if (!r || !file) return
@@ -479,6 +480,61 @@ const geo = {
   },
   clear (w) { if (w && w.native) w.stop(); else if (w !== null && w !== undefined && navigator.geolocation) navigator.geolocation.clearWatch(w) }
 }
+// ---- optional offline relay (store-and-forward for people whose app is closed)
+const relayUrl = () => (S.settings.relay || '').trim()
+async function relayInit () {
+  const base = relayUrl(); if (!base || !me()) return false
+  try {
+    if (!me().ib) { me().ib = randId(18); me().ipk = randId(24); await saveCfg(); for (const r of Object.values(R)) { try { r.profile.set(profilePayload()) } catch { /* ignore */ } } }
+    if (S.relayOk !== base + me().ib + (S.pushToken || '')) { await relayRegister(base, me().ib, me().ipk, S.pushToken || ''); S.relayOk = base + me().ib + (S.pushToken || '') }
+    return true
+  } catch { return false }
+}
+async function relaySend (r, m) {
+  const base = relayUrl(); if (!base || !me().ib) return
+  const targets = Object.entries(r.users).filter(([u, p]) => u !== S.uid && p && p.ib && !isBlocked(u))
+  if (!targets.length) return
+  try {
+    const blob = await seal(r.c, { t: 'msg', m })
+    await Promise.all(targets.map(([, p]) => relayPut(base, p.ib, blob).catch(() => {})))
+  } catch { /* relay is best effort */ }
+}
+const capPush = (() => { try { const c = window.Capacitor; return c && c.isNativePlatform && c.isNativePlatform() ? c.registerPlugin('PushNotifications') : null } catch { return null } })()
+let pushOn = false
+async function setupPush () {
+  if (!capPush || pushOn || !relayUrl()) return
+  try {
+    const p = await capPush.requestPermissions(); if (p.receive !== 'granted') return
+    pushOn = true
+    capPush.addListener('registration', t => { S.pushToken = t.value; S.relayOk = ''; relayInit() })
+    capPush.addListener('registrationError', () => { pushOn = false })
+    capPush.addListener('pushNotificationReceived', () => relayPullAll())
+    capPush.addListener('pushNotificationActionPerformed', () => relayPullAll())
+    await capPush.register()
+  } catch { pushOn = false }
+}
+let pulling = false
+async function relayPullAll () {
+  const base = relayUrl(); if (!base || !me() || !me().ib || pulling) return
+  pulling = true
+  try {
+    if (!await relayInit()) return
+    let ack = []
+    for (let round = 0; round < 5; round++) {
+      const { items } = await relayPull(base, me().ib, me().ipk, ack); ack = []
+      if (!items || !items.length) break
+      for (const it of items) {
+        ack.push(it.k)
+        const o = await relayOpen(S.circles, it.blob); if (!o) continue
+        const r = R[o.c.id]; const m = o.m && o.m.m; if (!r || !m || o.m.t !== 'msg' || !validMsg(m) || isBlocked(m.from) || m.from === S.uid || !r.users[m.from]) continue
+        await ingest(r, m, true)
+      }
+      if (items.length < 100) { await relayPull(base, me().ib, me().ipk, ack).catch(() => {}); break }
+    }
+  } catch { /* offline */ } finally { pulling = false }
+}
+setInterval(() => { if (!document.hidden) relayPullAll() }, 45000)
+document.addEventListener('visibilitychange', () => { if (!document.hidden) relayPullAll() })
 const msgPreview = m => m.kind === 'file' ? 'Sent a file: ' + m.file.name : m.kind === 'loc' ? '📍 Shared a location' : m.kind === 'post' ? 'Shared a post: ' + (m.text || 'new photo') : (m.text || '')
 function lastActivity (c) { const r = R[c.id]; const l = r && r.msgs.filter(m => m.kind === 'text' || m.kind === 'file' || m.kind === 'loc').slice(-1)[0]; return l ? l.ts : (c.created || 0) }
 function sortedCircles () {
@@ -912,7 +968,7 @@ function sendLoc (cid, force) {
 }
 async function postLocMsg (r, sh) {
   const m = { id: uid(), cid: r.c.id, from: S.uid, ts: Date.now(), kind: 'loc', text: '', lat: sh.pos.latitude, lng: sh.pos.longitude, until: sh.until, fc: me().feedColor || '', reacts: {} }
-  r.msgs.push(m); await msgPut(m); r.A.msg.send(m).catch(() => {}); render(); scrollEnd()
+  r.msgs.push(m); await msgPut(m); r.A.msg.send(m).catch(() => {}); relaySend(r, m); render(); scrollEnd()
 }
 function startShare (cid, to, ms, all, fixed) {
   const r = R[cid]; if (!r) return
@@ -1211,6 +1267,7 @@ function settingsDialog (tab = 'profile') {
       <div class="tgl"><div>Floating pop-ups<small>A small avatar bubble appears when someone messages you in another chat</small></div><label class="sw"><input type="checkbox" data-tg="popups" ${s.popups !== false ? 'checked' : ''}><span></span></label></div>
       <p class="mute sm">Sounds are original, synthesized tones inspired by classic messenger apps.</p>`,
     network: () => `<label class="lbl">GIF search key (free, from developers.giphy.com)</label><input id="nGif" value="${esc(s.giphy)}" placeholder="Paste your Giphy API key"><p class="mute sm">Without a key you can still send GIFs by uploading them or pasting a GIF link.</p>
+      <label class="lbl">Offline message relay (optional)</label><input id="nRelayUrl" value="${esc(s.relay || '')}" placeholder="https://orbit-relay.yourname.workers.dev"><p class="mute sm">Delivers messages to people whose app is closed. Messages are encrypted before they leave your device; the relay can't read them. Everyone in a circle should use the same relay.</p>
       <label class="lbl">Web app address (for tap-to-join invite links)</label><input id="nBase" value="${esc(s.webBase)}" placeholder="https://yourname.github.io/orbit/">
       <label class="lbl">Custom signaling relays (wss://…, optional)</label><textarea id="nRel" rows="2" placeholder="Leave empty for the default public relays">${esc(s.relays)}</textarea>
       <label class="lbl">TURN server (helps on strict networks / mobile data)</label><input id="nTurn" value="${esc(s.turnUrl)}" placeholder="turn:host:3478"><div class="row2" style="margin-top:8px"><input id="nTu" value="${esc(s.turnUser)}" placeholder="username"><input id="nTp" value="${esc(s.turnPass)}" placeholder="credential"></div><p class="mute sm">Changes to relays/TURN apply after restarting Orbit.</p>`,
@@ -1249,7 +1306,7 @@ async function commitSettings (m, tab) {
     pushProfile(); if (mbx) mbx.card.set(cardPayload())
   }
   if (tab === 'network') {
-    const s = S.settings; s.giphy = $('#nGif', m).value.trim(); s.webBase = $('#nBase', m).value.trim(); s.relays = $('#nRel', m).value.trim(); s.turnUrl = $('#nTurn', m).value.trim(); s.turnUser = $('#nTu', m).value.trim(); s.turnPass = $('#nTp', m).value.trim()
+    const s = S.settings; s.giphy = $('#nGif', m).value.trim(); s.webBase = $('#nBase', m).value.trim(); s.relay = $('#nRelayUrl', m).value.trim(); S.relayOk = ''; setTimeout(relayPullAll, 300); setTimeout(setupPush, 600); s.relays = $('#nRel', m).value.trim(); s.turnUrl = $('#nTurn', m).value.trim(); s.turnUser = $('#nTu', m).value.trim(); s.turnPass = $('#nTp', m).value.trim()
   }
   await saveCfg(); render()
 }
@@ -1538,10 +1595,11 @@ async function boot () {
   startMailbox()
   if (!S.settings.permAsked) setTimeout(permDialog, 1200)
   for (const c of S.circles) connect(c).catch(e => console.error(e))
+  setTimeout(relayPullAll, 2500); setTimeout(setupPush, 4000)
   const inv = sessionStorage.getItem('orbit-invite'); if (inv) { sessionStorage.removeItem('orbit-invite'); await joinByInvite(inv) }
   if (!S.active && S.circles[0] && window.innerWidth > 820) openCircle(S.circles[0].id)
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {})
-  window.__orbit = { S, R }
+  window.__orbit = { S, R, relayPullAll, relayInit }
 }
 // ---- context menus, long-press, keyboard, search box
 const msgFromEl = el => { const mm = el.closest('.m'); const r = cur(); if (!mm || !r) return null; return { r, m: r.msgs.find(x => x.id === mm.id.slice(2)) } }
