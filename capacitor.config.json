@@ -1,0 +1,8 @@
+{
+  "appId": "app.orbitfamily.chat",
+  "appName": "Orbit",
+  "webDir": "dist",
+  "backgroundColor": "#0b0d12",
+  "ios": { "contentInset": "never", "backgroundColor": "#0b0d12", "limitsNavigationsToAppBoundDomains": false, "scrollEnabled": false },
+  "server": { "iosScheme": "capacitor" }
+}

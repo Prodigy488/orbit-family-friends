@@ -1,0 +1,29 @@
+{
+  "name": "orbit",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@capacitor/cli": "^8.6.2",
+    "@capacitor/core": "^8.6.2",
+    "@capacitor/geolocation": "^8.2.5",
+    "@capacitor/ios": "^8.6.2",
+    "@tensorflow/tfjs": "^4.22.0",
+    "@trystero-p2p/torrent": "^0.27.0",
+    "emoji-picker-element": "^1.29.1",
+    "emoji-picker-element-data": "^1.8.0",
+    "esbuild": "^0.28.2",
+    "jsqr": "^1.4.0",
+    "leaflet": "^1.9.4",
+    "leo-profanity": "^1.9.0",
+    "nsfwjs": "^4.3.0",
+    "qrcode": "^1.5.4",
+    "trystero": "^0.27.0"
+  }
+}
