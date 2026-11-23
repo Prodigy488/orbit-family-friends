@@ -178,8 +178,9 @@ async function leaveCircle (id, ask = true) {
   try { stopShare(id); if (r) { await r.room.leave(); leaveCall(id) } } catch { /* ignore */ }
   for (const m of (r ? r.msgs : [])) { await msgDel(m.id); if (m.file) await fileDel(m.file.id) }
   delete R[id]; S.circles = S.circles.filter(x => x.id !== id); await saveCfg()
-  if (S.active === id) { S.active = null; S.panel = null }
+  if (S.active === id) { S.active = null; S.panel = null; S.mobileChat = false; S.view = 'chats' }
   render()
+  if (!S.active && S.circles[0] && window.innerWidth > 820) openCircle(S.circles[0].id)
 }
 const openCircle = id => { S.view = 'chats'; S.active = id; S.mobileChat = true; S.reply = null; S.editing = null; const r = R[id]; if (r) r.unread = 0; render(); scrollEnd(); if (r) setTimeout(() => sendSeen(r), 300) }
 
@@ -458,7 +459,7 @@ setInterval(() => {
 }, 15000)
 
 // ===================================================================== rendering
-function render () { renderList(); renderMain(); renderPanel(); $('#app').className = (S.panel ? 'pan ' : '') + (S.mobileChat ? 'chatting ' : '') + (S.view === 'chats' && S.mobileChat ? 'inchat' : '')
+function render () { if (S.view === 'chats' && !S.active) { S.mobileChat = false; S.panel = false } renderList(); renderMain(); renderPanel(); $('#app').className = (S.panel ? 'pan ' : '') + (S.mobileChat ? 'chatting ' : '') + (S.view === 'chats' && S.mobileChat ? 'inchat' : '')
   const mn = $('#mnav'); if (mn) { mn.innerHTML = `<button data-mn="chats" class="${S.view === 'chats' ? 'on' : ''}">${ic('chat', 22)}<span>Chats</span></button><button data-mn="feed" class="${S.view === 'feed' ? 'on' : ''}">${ic('news', 22)}<span>Feed</span>${S.feedNew ? `<i class="badge">${S.feedNew}</i>` : ''}</button>` } }
 function onlineUsers () {
   const out = {}
@@ -818,7 +819,7 @@ function renderPanel () {
   const pn = $('#panel'); const r = cur()
   if (!S.panel || !r) { pn.innerHTML = ''; return }
   const tabs = [['members', ic('users', 16) + ' People'], ['media', ic('image', 16) + ' Media'], ['map', ic('map', 16) + ' Map'], ['circle', ic('sliders', 16) + ' Circle']]
-  pn.innerHTML = `<div class="tabs">${tabs.map(([k, l]) => `<button class="${S.tab === k ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}</div><div class="pbody" id="pbody"></div>`
+  pn.innerHTML = `<div class="phead"><button class="ib" data-a="panel" title="Back to chat">${ic('back', 22)}</button><div class="t">${esc(r.c.name)} <small class="mute">Details</small></div><button class="ib" data-a="panel" title="Close">${ic('x', 20)}</button></div><div class="tabs">${tabs.map(([k, l]) => `<button class="${S.tab === k ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}</div><div class="pbody" id="pbody"></div>`
   const body = $('#pbody')
   if (S.tab === 'members') body.innerHTML = membersHtml(r)
   if (S.tab === 'media') body.innerHTML = mediaHtml(r)
