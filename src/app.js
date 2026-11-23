@@ -1217,9 +1217,9 @@ function settingsDialog (tab = 'profile') {
     data: () => `<div class="sec"><h3>Your data</h3><p class="mute sm">Everything lives on this device. There is no account and no server copy.</p><button class="btn dng" id="wipe">Erase everything on this device</button></div>${Object.keys(S.blocked).length ? '<h3>Blocked people</h3>' + Object.entries(S.blocked).map(([u, b]) => `<div class="mrow"><div class="t">${esc(b.name || u.slice(0, 10))}</div><button class="btn sm" data-mem="unblock" data-u="${u}">Unblock</button></div>`).join('') : '<p class="mute sm">You have not blocked anyone.</p>'}`
   }
   const names = [['profile', 'Profile'], ['look', 'Look'], ['safety', 'Safety'], ['notify', 'Alerts'], ['network', 'Network'], ['data', 'Data']]
-  const old = $('#setm'); if (old) old.remove()
+  const old = $('#setm'); const keep = old && old.dataset.tab === tab ? old.querySelector('.card').scrollTop : 0; if (old) old.remove()
   const m = modal(`<h2>Settings</h2><div class="chips" style="margin:10px 0 14px">${names.map(([k, l]) => `<span class="chip ${tab === k ? 'on' : ''}" data-st="${k}">${l}</span>`).join('')}</div><div id="sbody">${pages[tab]()}</div><div class="foot"><span></span><button class="btn pri" data-x id="sdone">Done</button></div>`, true)
-  m.id = 'setm'
+  m.id = 'setm'; m.dataset.tab = tab; m.querySelector('.card').scrollTop = keep
   m.addEventListener('input', e => { if (e.target.id === 'sVol') { S.settings.volume = e.target.value / 100; clearTimeout(S._vt); S._vt = setTimeout(async () => { await saveCfg(); beepForce('msg') }, 250) } })
   m.addEventListener('change', async e => { if (e.target.id === 'fcCustom') { me().feedColor = e.target.value; await commitSettings(m, tab); feedSig = ''; settingsDialog(tab) } })
   m.onclick = async e => {
