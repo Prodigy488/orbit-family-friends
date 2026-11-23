@@ -205,12 +205,12 @@ emoji-picker{--background:var(--panel);--border-color:var(--line);--input-border
 
 #mnav{display:none}
 @media(max-width:820px){
-  #mnav{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--panel);border-top:1px solid var(--line);padding:6px 10px calc(6px + env(safe-area-inset-bottom))}
+  #mnav{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--panel);border-top:1px solid var(--line);padding:6px 10px calc(6px + var(--sab))}
   #mnav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:0;color:var(--mute);font-size:11px;font-weight:600;padding:4px;position:relative}
   #mnav button.on{color:var(--accent)}
   #mnav .badge{position:absolute;top:0;left:56%}
   #app.inchat~#mnav{display:none}
-  #app:not(.inchat) .side,#app:not(.inchat) .main{padding-bottom:62px}
+  #app:not(.inchat) .side,#app:not(.inchat) .main{padding-bottom:calc(62px + var(--sab))}
   .seg{display:none}
 }
 @media(max-width:820px){.head .stack{display:none}.head .t{flex:1;min-width:0}.head .t .n,.head .t .s{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.head .hb{padding:7px 7px}}
@@ -321,13 +321,13 @@ body.calldock .hb span,body.calldock .head .stack{display:none}
 .ctxe button[data-cplus]{border:1px dashed var(--line);width:34px;height:34px;padding:0;display:flex;align-items:center;justify-content:center}
 .leaflet-container{font:inherit}
 /* ---- iPhone / native shell polish ---- */
-html{-webkit-text-size-adjust:100%;overscroll-behavior:none}
+html{--sab:env(safe-area-inset-bottom,0px);-webkit-text-size-adjust:100%;overscroll-behavior:none}
 body{-webkit-tap-highlight-color:transparent}
 .bub,.crow,.m{-webkit-touch-callout:none}
 body.native #app{padding-top:env(safe-area-inset-top);padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);background:var(--panel)}
 body.native .composer{padding-bottom:calc(10px + env(safe-area-inset-bottom))}
-body.native .side{padding-bottom:env(safe-area-inset-bottom)}
-body.native #mnav{padding-bottom:calc(6px + env(safe-area-inset-bottom))}
+
+body.native #mnav{padding-bottom:calc(6px + var(--sab))}
 body.native input,body.native textarea,body.native select{font-size:16px!important}
 body.native .toasts,body.native #toasts{top:calc(10px + env(safe-area-inset-top))}
 @media(max-width:820px){body.native .composer{padding-bottom:calc(8px + env(safe-area-inset-bottom))}}
